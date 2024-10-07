@@ -10,6 +10,7 @@ from openpilot.selfdrive.car.fw_query_definitions import FwQueryConfig, Request,
 
 Ecu = car.CarParams.Ecu
 VisualAlert = car.CarControl.HUDControl.VisualAlert
+GearShifter = car.CarState.GearShifter
 
 
 class CarControllerParams:
@@ -66,6 +67,9 @@ class CruiseButtons:
   DECEL_SET = 3
   CANCEL = 2
   MAIN = 1
+  NONE = 0
+  DISTANCE = 3
+  LKAS = 1
 
 
 class CruiseSettings:
@@ -153,6 +157,12 @@ class CAR(Platforms):
       HondaCarDocs("Honda Civic Hatchback 2022-24", "All", video_link="https://youtu.be/ytiOT5lcp6Q"),
     ],
     HONDA_CIVIC_BOSCH.specs,
+    dbc_dict('honda_civic_ex_2022_can_generated', None),
+    flags=HondaFlags.BOSCH_RADARLESS,
+  )
+  ACURA_INTEGRA = HondaBoschPlatformConfig(
+    [HondaCarDocs("Acura Integra 2024", "All")],
+    CarSpecs(mass=3338.8 * CV.LB_TO_KG, wheelbase=2.5, centerToFrontRatio=0.5, steerRatio=16.71, tireStiffnessFactor=0.82),
     dbc_dict('honda_civic_ex_2022_can_generated', None),
     flags=HondaFlags.BOSCH_RADARLESS,
   )

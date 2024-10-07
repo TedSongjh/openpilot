@@ -263,8 +263,24 @@ class CarController(CarControllerBase):
       # If using stock ACC, spam cancel command to kill gas when OP disengages.
       if pcm_cancel_cmd:
         can_sends.append(hondacan.spam_buttons_command(self.packer, self.CAN, CruiseButtons.CANCEL, self.CP.carFingerprint))
+      elif CC.cruiseControl.resume and self.CP.carFingureprint not in HONDA_BOSCH_RADARLESS:
+        can_sends.append(hondacan.spam_buttons_command(self.packer, self.CAN, CruiseButtons.RES_ACCEL, self.CP.carFingerprint))
       elif CC.cruiseControl.resume:
         can_sends.append(hondacan.spam_buttons_command(self.packer, self.CAN, CruiseButtons.RES_ACCEL, self.CP.carFingerprint))
+      elif CC.enabled and self.CP.carFingureprint in HONDA_BOSCH_RADARLESS and self.frame % 4 == 0:
+        # Send buttons to the camera when engaged. Only send the LKAS button to turn off stock LKAS off so it can't disengage cruise.
+        # Priority: pcm_cancel > user > auto resume > turn off lkas > none/idle
+        cruise = CruiseButtons.NONE
+        if CS.cruise_buttons or (CS.cruise_setting and CS.cruise_setting != CruiseButtons.LKAS):
+          cruise = CS.cruise_buttons
+          setting = CS.cruise_setting
+        # simulate a momentary press
+        elif self.frame % 100 <= 25:
+          if CC.cruiseControl.resume:
+            cruise = CruiseButtons.RES_ACCEL
+          elif CS.lkas_hud['ENABLED']:
+            setting = CruiseButtons.LKAS
+        can_sends.append(hondacan.spam_buttons_command(self.packer, self.CAN, cruise, self.CP.carFingerprint, setting, CS.scm_buttons))
       elif CS.out.cruiseState.enabled and not self.CP.pcmCruiseSpeed:
         self.cruise_button = self.get_cruise_buttons(CS, CC.vCruise)
         if self.cruise_button is not None:
