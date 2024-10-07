@@ -11,10 +11,10 @@ from openpilot.common.git import get_commit
 from openpilot.selfdrive.car.car_helpers import interface_names
 from openpilot.tools.lib.openpilotci import get_url, upload_file
 from openpilot.selfdrive.test.process_replay.compare_logs import compare_logs, format_diff
-from openpilot.selfdrive.test.process_replay.process_replay import CONFIGS, PROC_REPLAY_DIR, FAKEDATA, check_openpilot_enabled, replay_process
+from openpilot.selfdrive.test.process_replay.process_replay import CONFIGS, PROC_REPLAY_DIR, FAKEDATA, replay_process, \
+                                                                   check_openpilot_enabled, check_most_messages_valid
 from openpilot.tools.lib.filereader import FileReader
-from openpilot.tools.lib.logreader import LogReader
-from openpilot.tools.lib.helpers import save_log
+from openpilot.tools.lib.logreader import LogReader, save_log
 
 source_segments = [
   ("BODY", "937ccb7243511b65|2022-05-24--16-03-09--1"),        # COMMA.COMMA_BODY
@@ -41,23 +41,23 @@ source_segments = [
 ]
 
 segments = [
-  ("BODY", "regen997DF2697CB|2023-10-30--23-14-29--0"),
-  ("HYUNDAI", "regen2A9D2A8E0B4|2023-10-30--23-13-34--0"),
-  ("HYUNDAI2", "regen6CA24BC3035|2023-10-30--23-14-28--0"),
-  ("TOYOTA", "regen5C019D76307|2023-10-30--23-13-31--0"),
-  ("TOYOTA2", "regen5DCADA88A96|2023-10-30--23-14-57--0"),
-  ("TOYOTA3", "regen7204CA3A498|2023-10-30--23-15-55--0"),
-  ("HONDA", "regen048F8FA0B24|2023-10-30--23-15-53--0"),
-  ("HONDA2", "regen7D2D3F82D5B|2023-10-30--23-15-55--0"),
-  ("CHRYSLER", "regen7125C42780C|2023-10-30--23-16-21--0"),
-  ("RAM", "regen2731F3213D2|2023-10-30--23-18-11--0"),
-  ("SUBARU", "regen86E4C1B4DDD|2023-10-30--23-18-14--0"),
-  ("GM", "regenF6393D64745|2023-10-30--23-17-18--0"),
-  ("GM2", "regen220F830C05B|2023-10-30--23-18-39--0"),
-  ("NISSAN", "regen4F671F7C435|2023-10-30--23-18-40--0"),
-  ("VOLKSWAGEN", "regen8BDFE7307A0|2023-10-30--23-19-36--0"),
-  ("MAZDA", "regen2E9F1A15FD5|2023-10-30--23-20-36--0"),
-  ("FORD", "regen6D39E54606E|2023-10-30--23-20-54--0"),
+  ("BODY", "regen34ECCE11CA1|2024-07-29--22-55-10--0"),
+  ("HYUNDAI", "regenC713CE6FA82|2024-07-29--22-56-31--0"),
+  ("HYUNDAI2", "regenD81F3A374A7|2024-07-29--22-58-45--0"),
+  ("TOYOTA", "regenE6D76723DC2|2024-07-29--23-00-08--0"),
+  ("TOYOTA2", "regen198859A572C|2024-07-29--23-01-31--0"),
+  ("TOYOTA3", "regenDF1EB621A66|2024-07-29--23-03-49--0"),
+  ("HONDA", "regen0FE7C4758B5|2024-07-29--23-05-14--0"),
+  ("HONDA2", "regen510A1F60E60|2024-07-29--23-06-39--0"),
+  ("CHRYSLER", "regenDACF082E83B|2024-07-29--23-08-01--0"),
+  ("RAM", "regen8BFB7E62F52|2024-07-29--23-10-14--0"),
+  ("SUBARU", "regen4EE2D45369E|2024-07-29--23-12-31--0"),
+  ("GM", "regenB38D92E6A4D|2024-07-29--23-13-54--0"),
+  ("GM2", "regenC5488470F1A|2024-07-29--23-16-09--0"),
+  ("NISSAN", "regenE5400EB4689|2024-07-29--23-17-30--0"),
+  ("VOLKSWAGEN", "regenD0B5635A8B9|2024-07-29--23-18-54--0"),
+  ("MAZDA", "regen57F8511F082|2024-07-29--23-21-09--0"),
+  ("FORD", "regen5708620AA2E|2024-07-29--23-23-20--0"),
 ]
 
 # dashcamOnly makes don't need to be tested until a full port is done
@@ -107,9 +107,16 @@ def test_process(cfg, lr, segment, ref_log_path, new_log_path, ignore_fields=Non
   # check to make sure openpilot is engaged in the route
   if cfg.proc_name == "controlsd":
     if not check_openpilot_enabled(log_msgs):
-      # FIXME: these segments should work, but the replay enabling logic is too brittle
-      if segment not in ("regen6CA24BC3035|2023-10-30--23-14-28--0", "regen7D2D3F82D5B|2023-10-30--23-15-55--0"):
-        return f"Route did not enable at all or for long enough: {new_log_path}", log_msgs
+      return f"Route did not enable at all or for long enough: {new_log_path}", log_msgs
+  if not check_most_messages_valid(log_msgs):
+    return f"Route did not have enough valid messages: {new_log_path}", log_msgs
+
+  # skip this check if the segment is using qcom gps
+  if cfg.proc_name != 'ubloxd' or any(m.which() in cfg.pubs for m in lr):
+    seen_msgs = {m.which() for m in log_msgs}
+    expected_msgs = set(cfg.subs)
+    if seen_msgs != expected_msgs:
+      return f"Expected messages: {expected_msgs}, but got: {seen_msgs}", log_msgs
 
   try:
     return compare_logs(ref_log_msgs, log_msgs, ignore_fields + cfg.ignore, ignore_msgs, cfg.tolerance), log_msgs
@@ -191,11 +198,11 @@ if __name__ == "__main__":
         if cfg.proc_name not in tested_procs:
           continue
 
-        cur_log_fn = os.path.join(FAKEDATA, f"{segment}_{cfg.proc_name}_{cur_commit}.bz2")
+        cur_log_fn = os.path.join(FAKEDATA, f"{segment}_{cfg.proc_name}_{cur_commit}.zst")
         if args.update_refs:  # reference logs will not exist if routes were just regenerated
           ref_log_path = get_url(*segment.rsplit("--", 1))
         else:
-          ref_log_fn = os.path.join(FAKEDATA, f"{segment}_{cfg.proc_name}_{ref_commit}.bz2")
+          ref_log_fn = os.path.join(FAKEDATA, f"{segment}_{cfg.proc_name}_{ref_commit}.zst")
           ref_log_path = ref_log_fn if os.path.exists(ref_log_fn) else BASE_URL + os.path.basename(ref_log_fn)
 
         dat = None if args.upload_only else log_data[segment]

@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 import capnp
 import os
 import importlib
 import pytest
 import random
-import unittest
+import unittest # noqa: TID251
 from collections import defaultdict, Counter
 import hypothesis.strategies as st
 from hypothesis import Phase, given, settings
@@ -13,14 +12,14 @@ from parameterized import parameterized_class
 from cereal import messaging, log, car
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
-from openpilot.common.realtime import DT_CTRL
-from openpilot.selfdrive.car import gen_empty_fingerprint
+from openpilot.selfdrive.car import DT_CTRL, gen_empty_fingerprint
 from openpilot.selfdrive.car.fingerprints import all_known_cars, MIGRATION
 from openpilot.selfdrive.car.car_helpers import FRAME_FINGERPRINT, interfaces
 from openpilot.selfdrive.car.honda.values import CAR as HONDA, HondaFlags
 from openpilot.selfdrive.car.tests.routes import non_tested_cars, routes, CarTestRoute
 from openpilot.selfdrive.car.values import Platform
-from openpilot.selfdrive.controls.controlsd import Controls
+from openpilot.selfdrive.car.card import Car
+from openpilot.selfdrive.pandad import can_capnp_to_list
 from openpilot.selfdrive.test.helpers import read_segment_list
 from openpilot.system.hardware.hw import DEFAULT_DOWNLOAD_CACHE_ROOT
 from openpilot.tools.lib.logreader import LogReader, internal_source, openpilotci_source
@@ -215,7 +214,7 @@ class TestCarModelBase(unittest.TestCase):
     # TODO: also check for checksum violations from can parser
     can_invalid_cnt = 0
     can_valid = False
-    CC = car.CarControl.new_message()
+    CC = car.CarControl.new_message().as_reader()
 
     for i, msg in enumerate(self.can_msgs):
       CS = self.CI.update(CC, (msg.as_builder().to_bytes(),))
@@ -239,7 +238,7 @@ class TestCarModelBase(unittest.TestCase):
     # start parsing CAN messages after we've left ELM mode and can expect CAN traffic
     error_cnt = 0
     for i, msg in enumerate(self.can_msgs[self.elm_frame:]):
-      rr = RI.update((msg.as_builder().to_bytes(),))
+      rr = RI.update(can_capnp_to_list((msg.as_builder().to_bytes(),)))
       if rr is not None and i > 50:
         error_cnt += car.RadarData.Error.canError in rr.errors
     self.assertEqual(error_cnt, 0)
@@ -299,7 +298,7 @@ class TestCarModelBase(unittest.TestCase):
 
         now_nanos += DT_CTRL * 1e9
         msgs_sent += len(sendcan)
-        for addr, _, dat, bus in sendcan:
+        for addr, dat, bus in sendcan:
           to_send = libpanda_py.make_CANPacket(addr, bus % 4, dat)
           self.assertTrue(self.safety.safety_tx_hook(to_send), (addr, dat, bus))
 
@@ -308,17 +307,17 @@ class TestCarModelBase(unittest.TestCase):
 
     # Make sure we can send all messages while inactive
     CC = car.CarControl.new_message()
-    test_car_controller(CC)
+    test_car_controller(CC.as_reader())
 
     # Test cancel + general messages (controls_allowed=False & cruise_engaged=True)
     self.safety.set_cruise_engaged_prev(True)
     CC = car.CarControl.new_message(cruiseControl={'cancel': True})
-    test_car_controller(CC)
+    test_car_controller(CC.as_reader())
 
     # Test resume + general messages (controls_allowed=True & cruise_engaged=True)
     self.safety.set_controls_allowed(True)
     CC = car.CarControl.new_message(cruiseControl={'resume': True})
-    test_car_controller(CC)
+    test_car_controller(CC.as_reader())
 
   # Skip stdout/stderr capture with pytest, causes elevated memory usage
   @pytest.mark.nocapture
@@ -406,8 +405,7 @@ class TestCarModelBase(unittest.TestCase):
     controls_allowed_prev = False
     CS_prev = car.CarState.new_message()
     checks = defaultdict(int)
-    controlsd = Controls(CI=self.CI)
-    controlsd.initialized = True
+    card = Car(CI=self.CI)
     for idx, can in enumerate(self.can_msgs):
       CS = self.CI.update(CC, (can.as_builder().to_bytes(), ))
       for msg in filter(lambda m: m.src in range(64), can.can):
@@ -452,10 +450,10 @@ class TestCarModelBase(unittest.TestCase):
           checks['cruiseState'] += CS.cruiseState.enabled != self.safety.get_cruise_engaged_prev()
       else:
         # Check for enable events on rising edge of controls allowed
-        controlsd.update_events(CS)
-        controlsd.CS_prev = CS
+        card.update_events(CS)
+        card.CS_prev = CS
         button_enable = (any(evt.enable for evt in CS.events) and
-                         not any(evt == EventName.pedalPressed for evt in controlsd.events.names))
+                         not any(evt == EventName.pedalPressed for evt in card.events.names))
         mismatch = button_enable != (self.safety.get_controls_allowed() and not controls_allowed_prev)
         checks['controlsAllowed'] += mismatch
         controls_allowed_prev = self.safety.get_controls_allowed()

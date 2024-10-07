@@ -1,7 +1,7 @@
 import numpy as np
 
-from openpilot.common.realtime import DT_CTRL
 from opendbc.can.packer import CANPacker
+from openpilot.selfdrive.car import DT_CTRL
 from openpilot.selfdrive.car.body import bodycan
 from openpilot.selfdrive.car.body.values import SPEED_FROM_RPM
 from openpilot.selfdrive.car.interfaces import CarControllerBase
@@ -17,7 +17,7 @@ MAX_TURN_INTEGRATOR = 0.1  # meters
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_name, CP, VM):
-    self.frame = 0
+    super().__init__(dbc_name, CP, VM)
     self.packer = CANPacker(dbc_name)
 
     # PIDs
@@ -75,7 +75,7 @@ class CarController(CarControllerBase):
     can_sends = []
     can_sends.append(bodycan.create_control(self.packer, torque_l, torque_r))
 
-    new_actuators = CC.actuators.copy()
+    new_actuators = CC.actuators.as_builder()
     new_actuators.accel = torque_l
     new_actuators.steer = torque_r
     new_actuators.steerOutputCan = torque_r

@@ -5,9 +5,15 @@
 
 #include <QDebug>
 
-#include "selfdrive/ui/qt/maps/map_helpers.h"
+#include "common/swaglog.h"
 #include "selfdrive/ui/qt/util.h"
+#ifdef SUNNYPILOT
+#include "selfdrive/ui/sunnypilot/ui.h"
+#include "selfdrive/ui/sunnypilot/qt/maps/map_helpers.h"
+#else
+#include "selfdrive/ui/qt/maps/map_helpers.h"
 #include "selfdrive/ui/ui.h"
+#endif
 
 
 const int INTERACTION_TIMEOUT = 100;
@@ -53,6 +59,7 @@ MapWindow::~MapWindow() {
 }
 
 void MapWindow::initLayers() {
+  RETURN_IF_SUNNYPILOT
   // This doesn't work from initializeGL
   if (!m_map->layerExists("modelPathLayer")) {
     qDebug() << "Initializing modelPathLayer";
@@ -112,11 +119,20 @@ void MapWindow::initLayers() {
 }
 
 void MapWindow::updateState(const UIState &s) {
+  RETURN_IF_SUNNYPILOT
   if (!uiState()->scene.started) {
     return;
   }
   const SubMaster &sm = *(s.sm);
   update();
+
+  // on rising edge of a valid system time, reinitialize the map to set a new token
+  if (sm.valid("clocks") && !prev_time_valid) {
+    LOGW("Time is now valid, reinitializing map");
+    m_settings.setApiKey(get_mapbox_token());
+    initializeGL();
+  }
+  prev_time_valid = sm.valid("clocks");
 
   if (sm.updated("liveLocationKalman")) {
     auto locationd_location = sm["liveLocationKalman"].getLiveLocationKalman();
@@ -261,6 +277,10 @@ void MapWindow::initializeGL() {
     if (change == QMapLibre::Map::MapChange::MapChangeDidFinishLoadingMap) {
       loaded_once = true;
     }
+  });
+
+  QObject::connect(m_map.data(), &QMapLibre::Map::mapLoadingFailed, [=](QMapLibre::Map::MapLoadingFailure err_code, const QString &reason) {
+    LOGE("Map loading failed with %d: '%s'\n", err_code, reason.toStdString().c_str());
   });
 }
 

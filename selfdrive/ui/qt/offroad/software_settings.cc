@@ -11,13 +11,22 @@
 #include "common/util.h"
 #include "selfdrive/ui/ui.h"
 #include "selfdrive/ui/qt/util.h"
+#ifdef SUNNYPILOT
+#include "selfdrive/ui/sunnypilot/qt/widgets/controls.h"
+#else
 #include "selfdrive/ui/qt/widgets/controls.h"
+#endif
 #include "selfdrive/ui/qt/widgets/input.h"
 #include "system/hardware/hw.h"
 
+#ifdef SUNNYPILOT
+#define ListWidget ListWidgetSP
+#define ButtonControl ButtonControlSP
+#endif
+
 
 void SoftwarePanel::checkForUpdates() {
-  std::system("pkill -SIGUSR1 -f selfdrive.updated.updated");
+  std::system("pkill -SIGUSR1 -f system.updated.updated");
 }
 
 SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
@@ -36,7 +45,7 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
     if (downloadBtn->text() == tr("CHECK")) {
       checkForUpdates();
     } else {
-      std::system("pkill -SIGHUP -f selfdrive.updated.updated");
+      std::system("pkill -SIGHUP -f system.updated.updated");
     }
   });
   addItem(downloadBtn);

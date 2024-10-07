@@ -1,6 +1,5 @@
 #include "tools/cabana/streamselector.h"
 
-#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QLabel>
 #include <QPushButton>
@@ -11,7 +10,7 @@
 #include "tools/cabana/streams/replaystream.h"
 #include "tools/cabana/streams/socketcanstream.h"
 
-StreamSelector::StreamSelector(AbstractStream **stream, QWidget *parent) : QDialog(parent) {
+StreamSelector::StreamSelector(QWidget *parent) : QDialog(parent) {
   setWindowTitle(tr("Open stream"));
   QVBoxLayout *layout = new QVBoxLayout(this);
   tab = new QTabWidget(this);
@@ -31,20 +30,20 @@ StreamSelector::StreamSelector(AbstractStream **stream, QWidget *parent) : QDial
   line->setFrameStyle(QFrame::HLine | QFrame::Sunken);
   layout->addWidget(line);
 
-  auto btn_box = new QDialogButtonBox(QDialogButtonBox::Open | QDialogButtonBox::Cancel);
+  btn_box = new QDialogButtonBox(QDialogButtonBox::Open | QDialogButtonBox::Cancel);
   layout->addWidget(btn_box);
 
-  addStreamWidget(ReplayStream::widget(stream));
-  addStreamWidget(PandaStream::widget(stream));
+  addStreamWidget(new OpenReplayWidget, tr("&Replay"));
+  addStreamWidget(new OpenPandaWidget, tr("&Panda"));
   if (SocketCanStream::available()) {
-    addStreamWidget(SocketCanStream::widget(stream));
+    addStreamWidget(new OpenSocketCanWidget, tr("&SocketCAN"));
   }
-  addStreamWidget(DeviceStream::widget(stream));
+  addStreamWidget(new OpenDeviceWidget, tr("&Device"));
 
   QObject::connect(btn_box, &QDialogButtonBox::rejected, this, &QDialog::reject);
   QObject::connect(btn_box, &QDialogButtonBox::accepted, [=]() {
     setEnabled(false);
-    if (((AbstractOpenStreamWidget *)tab->currentWidget())->open()) {
+    if (stream_ = ((AbstractOpenStreamWidget *)tab->currentWidget())->open(); stream_) {
       accept();
     }
     setEnabled(true);
@@ -58,6 +57,8 @@ StreamSelector::StreamSelector(AbstractStream **stream, QWidget *parent) : QDial
   });
 }
 
-void StreamSelector::addStreamWidget(AbstractOpenStreamWidget *w) {
-  tab->addTab(w, w->title());
+void StreamSelector::addStreamWidget(AbstractOpenStreamWidget *w, const QString &title) {
+  tab->addTab(w, title);
+  auto open_btn = btn_box->button(QDialogButtonBox::Open);
+  QObject::connect(w, &AbstractOpenStreamWidget::enableOpenButton, open_btn, &QPushButton::setEnabled);
 }
